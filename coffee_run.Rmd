@@ -1,0 +1,290 @@
+---
+title: "Calidad de Café"
+description: |
+  Es una prueba de analisis de los datos obtenidos por el laboratorio y datos sensoriales.
+author:
+  - name: Franklin Santos 
+    url: https://franklinsantos.com
+    affiliation: Instituto Nacional de Innovación Agropecuaria y forestal
+    
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+## INTRODUCCIÓN
+
+## MATERIALES Y MÉTODOS
+
+Los datos corresponden al análisis de calidad y datos sensoriales
+
+
+## RESULTADOS Y DISCUSIÓN
+
+```{r, echo=FALSE}
+library(ggradar)
+library(tidyverse)
+library(tidyquant)
+library(scales)
+library(corrr)
+library(googlesheets4)
+library(metan)
+```
+
+
+```{r, echo=FALSE}
+# data
+coffee_quality = read_sheet("https://docs.google.com/spreadsheets/d/1qtBBmLWxhWIrjOGXIYu8IvAEt1ngHsnguQjfiC1CpVU/edit?usp=sharing", sheet = "Data_chemic")
+coffee_sensory = read_sheet("https://docs.google.com/spreadsheets/d/1qtBBmLWxhWIrjOGXIYu8IvAEt1ngHsnguQjfiC1CpVU/edit?usp=sharing", sheet = "Data_sen")
+```
+
+### Análisis química de café
+
+```{r, echo=FALSE}
+#Format
+data_cofqual = coffee_quality %>%
+  filter(!Variedad %in% c("Caturra", 
+                        "Amboro_1", 
+                        "Amboro_2",
+                        "Icatu_precoz",
+                        "Bourbon_rojo")
+  ) %>%
+  select(Variedad, where(is.numeric), -ID)
+```
+
+```{r}
+data_cofqual %>%
+  dimnames()
+```
+
+
+
+```{r, echo=FALSE}
+ # Prep for ggradar (make sure to scale to 0-1)
+data_quailty_summary = data_cofqual%>% 
+ rename(group = Variedad) %>%
+  mutate_at(vars(-group), rescale)
+
+```
+
+
+```{r, echo=FALSE, layout="l-body-outset", fig.width=18, fig.height=12}
+#Faceted Radar
+data_quailty_summary %>%
+  ggradar() +
+  
+  # Facet
+  facet_wrap(~ group, ncol = 4) +
+  
+  # Theme
+  theme_void() +
+  scale_color_tq() +
+  theme(
+    strip.text = element_text(
+      size = 12,
+      colour = "white",
+      margin = margin(t = 5, b = 5)
+    ),
+    strip.background = element_rect(fill = "#2C3E50"),
+    legend.position = "none"
+  ) +
+  
+  #Title
+  labs(title = "Coffee quality")
+
+```
+
+### Star Coffe Quality Plot
+
+```{r, eval=FALSE, layout="l-body-outset", fig.width=18, fig.height=12}
+coffee_quality_1 = coffee_quality%>%
+  select(-ID)%>%
+  column_to_rownames(var = "Variedad")
+stars(coffee_quality_1[, 1:5], key.loc = c(10, 2.1),
+  draw.segments = TRUE, col.segments = hcl.colors(9, "Set 2"))
+```
+
+
+
+### Análisis sensorial de café
+
+```{r, echo=FALSE}
+#Seleccion de varieades de interes para el análisis
+data_sensory = coffee_sensory %>%
+  select(Variedad, where(is.numeric), -Catador, -ID)%>%
+  filter(!is.na(Dulzura))%>%
+  filter(!is.na(Taza_Limpia))%>%
+  filter(!is.na(Uniformidad))%>%
+  filter(Variedad %in% c("Geisha", 
+                        "Tipica", 
+                        "Bourbon_amarillo",
+                        "Sarchimor",
+                        "Villa_sarchi",
+                        "Catuai_rojo_L1",
+                        "Castillo_L1",
+                        "Castillo_L2",
+                        "Pacamara",
+                        "Mondo_novo")
+  )%>%
+  group_by(Variedad) %>%
+  summarise(across(2:10, .fns = median)) %>%
+  ungroup()
+```
+
+```{r, echo=FALSE}
+ # Prep for ggradar (make sure to scale to 0-1)
+data_sensory_summary = data_sensory%>% 
+ rename(group = Variedad) %>%
+  mutate_at(vars(-group), rescale)
+
+
+```
+
+
+```{r, echo=FALSE, layout="l-body-outset", fig.width=18, fig.height=12}
+#Faceted Radar
+data_sensory_summary %>%
+  ggradar() +
+  
+  # Facet
+  facet_wrap(~ group, ncol = 4) +
+  
+  # Theme
+  theme_void() +
+  scale_color_tq() +
+  theme(
+    strip.text = element_text(
+      size = 12,
+      colour = "white",
+      margin = margin(t = 5, b = 5)
+    ),
+    strip.background = element_rect(fill = "#2C3E50"),
+    legend.position = "none"
+  ) +
+  
+  #Title
+  labs(title = "Coffee Sensory")
+
+```
+
+### Star Coffe Sensorial Plot
+```{r, eval=FALSE, layout="l-body-outset", fig.width=18, fig.height=12}
+data_Sensory_1 = data_sensory%>%
+  column_to_rownames(var = "Variedad")
+
+stars(data_Sensory_1[, 1:5], key.loc = c(10, 2.1),
+  draw.segments = TRUE, col.segments = hcl.colors(9, "Set 2"))
+```
+
+### Análisis de componentes principales
+
+```{r}
+#join data 
+data_pca = left_join(data_sensory, data_cofqual, by = "Variedad") %>%
+  #convertir la primera columna en nombre de filas para pca
+  column_to_rownames(var = "Variedad") %>%
+  select(-Uniformidad, -Taza_Limpia)
+str(data_pca)
+```
+
+
+```{r}
+library("FactoMineR")
+library("factoextra")
+```
+
+
+```{r}
+pca_data_active = data_pca[, 1:12]
+res.pca <- PCA(pca_data_active, scale.unit=TRUE, ncp=6, graph = FALSE)
+plot(res.pca, label = "none")
+```
+
+```{r}
+# Extraer valores propios/varianzas
+get_eig(res.pca)
+# Visualizar valores propios/variaciones
+fviz_screeplot(res.pca, addlabels = TRUE, ylim = c(0, 50))
+```
+
+
+```{r, layout="l-body-outset", fig.width=10, fig.height=8}
+# Control variable colors using their contributions
+fviz_pca_var(res.pca, col.var="contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE # Avoid text overlapping
+             )
+```
+
+
+```{r}
+# Contributions of variables to PC1
+fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)
+# Contributions of variables to PC2
+fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
+```
+
+
+```{r, layout="l-body-outset", fig.width=10, fig.height=8}
+# Biplot of individuals and variables
+fviz_pca_biplot(res.pca, repel = TRUE)
+```
+
+
+### Only coffee sensory
+
+
+
+```{r}
+coffee_sensory_1 = coffee_sensory%>%
+  na.omit() %>%
+  select(Variedad, where(is.numeric), -Catador, -ID)%>%
+  group_by(Variedad) %>%
+  summarise(across(2:10, .fns = mean)) %>%
+  ungroup()%>%
+  column_to_rownames(var = "Variedad")
+
+```
+
+```{r}
+pca_data_active1 = coffee_sensory_1[, 1:9]
+res.pca <- PCA(pca_data_active1, scale.unit=TRUE, ncp=9, graph = FALSE)
+```
+
+```{r}
+# Extraer valores propios/varianzas
+get_eig(res.pca)
+# Visualizar valores propios/variaciones
+fviz_screeplot(res.pca, addlabels = TRUE, ylim = c(0, 50))
+```
+
+
+```{r, layout="l-body-outset", fig.width=10, fig.height=8}
+# Control variable colors using their contributions
+fviz_pca_var(res.pca, col.var="contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE # Avoid text overlapping
+             )
+```
+
+
+```{r}
+# Contributions of variables to PC1
+fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)
+# Contributions of variables to PC2
+fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
+```
+
+
+```{r, layout="l-body-outset", fig.width=10, fig.height=8}
+# Biplot of individuals and variables
+fviz_pca_biplot(res.pca, repel = TRUE)
+```
+
+## CONCLUSIÓN
+
+
+## REFERENCIAS BIBLIOGRÁFICAS
+
+
+
+
+
